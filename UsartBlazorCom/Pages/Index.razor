@@ -1,0 +1,140 @@
+﻿@page "/"
+@using System.IO.Ports
+@implements IDisposable
+
+
+<MudContainer>
+    <div class="d-flex justify-content-between">
+        @if (SerialPort.IsOpen) {
+            <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="Disconnect">Disconnect</MudButton>
+        }
+        else {
+            <MudButton Color="Color.Success" Variant="Variant.Outlined" OnClick="Connect">Connect</MudButton>
+        }
+        <div style="width: 10%">
+            <MudNumericField T="int" @bind-Value="SerialPort.BaudRate" Immediate="true" Label="Baud-Rate"/>
+        </div>
+        <div style="width: 10%">
+            <MudSelect T="string" @bind-Value="SerialPort.PortName" Label="Port-Name" AnchorOrigin="Origin.BottomCenter">
+                @foreach (var port in SerialPort.GetPortNames()) {
+                    <MudSelectItem Value="port"></MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div style="width: 10%">
+            <MudSelect T="int" @bind-Value="SerialPort.DataBits" Label="Data-Bits" AnchorOrigin="Origin.BottomCenter">
+                @for (var i = 5; i < 9; i++) {
+                    <MudSelectItem Value="i"></MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div style="width: 10%">
+            <MudSelect T="Parity" @bind-Value="SerialPort.Parity" Label="Parity" AnchorOrigin="Origin.BottomCenter">
+                @foreach (Parity parity in Enum.GetValues(typeof(Parity))) {
+                    <MudSelectItem Value="parity"></MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div style="width: 12%">
+            <MudSelect T="StopBits" @bind-Value="SerialPort.StopBits" Label="Stop-Bits" AnchorOrigin="Origin.BottomCenter">
+                @foreach (StopBits stopBits in Enum.GetValues(typeof(StopBits))) {
+                    <MudSelectItem Value="stopBits"></MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div style="width: 20%">
+            <MudSelect T="Handshake" @bind-Value="SerialPort.Handshake" Label="Handshake" AnchorOrigin="Origin.BottomCenter">
+                @foreach (Handshake handshake in Enum.GetValues(typeof(Handshake))) {
+                    <MudSelectItem Value="handshake"></MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+    </div>
+    <div>
+        <MudTabs Centered="true" Rounded="true">
+            <MudTabPanel Text="OUTPUT">
+                <MudPaper>
+                    <MudText Typo="Typo.body1">@OutPut</MudText>
+                </MudPaper>
+            </MudTabPanel>
+            <MudTabPanel Text="ERRORS">
+                <MudPaper>
+                    @foreach (var line in Errors.Split('\n')) {
+                        <MudText Typo="Typo.body1">@line</MudText>
+                    }
+                </MudPaper>
+            </MudTabPanel>
+            <MudTabPanel Text="LOGS">
+                <MudPaper>
+                    @foreach (var line in Logs.Split('\n')) {
+                        <MudText Typo="Typo.body1">@line</MudText>
+                    }
+                </MudPaper>
+            </MudTabPanel>
+        </MudTabs>
+
+    </div>
+
+</MudContainer>
+
+
+@code {
+
+    public string Logs { get; set; } = "";
+    public string Errors { get; set; } = "";
+
+    public string OutPut { get; set; } = "";
+
+    public SerialPort SerialPort { get; set; } = new() {
+        PortName = SerialPort.GetPortNames().First(),
+        BaudRate = 9600,
+        Parity = Parity.None,
+        DataBits = 8
+    };
+
+    private void Connect() {
+        SerialPort.Open();
+        SerialPort.DataReceived += HandleDataReceived;
+        SerialPort.ErrorReceived += HandleErrorReceived;
+    }
+
+    private void Disconnect() {
+        SerialPort.Close();
+        SerialPort.DataReceived -= HandleDataReceived;
+        SerialPort.ErrorReceived -= HandleErrorReceived;
+    }
+
+    private void HandleDataReceived(object sender, SerialDataReceivedEventArgs eventArgs) {
+        try {
+            var data = (char) SerialPort.ReadChar();
+            OutPut += data;
+            Logs += "Data Received!\n";
+        }
+        catch (Exception e) {
+            Errors += e.Message + "\n";
+        }
+        Update();
+    }
+
+    private void HandleErrorReceived(object sender, SerialErrorReceivedEventArgs eventArgs) {
+        try {
+            var data = SerialPort.ReadExisting();
+            OutPut += data;
+        }
+        catch (Exception e) {
+            Errors += e.Message + "\n";
+        }
+        Update();
+    }
+
+    private async void Update() =>
+        await InvokeAsync(StateHasChanged);
+
+
+    public void Dispose() {
+        SerialPort.Dispose();
+        SerialPort.DataReceived -= HandleDataReceived;
+        SerialPort.ErrorReceived -= HandleErrorReceived;
+    }
+
+}
