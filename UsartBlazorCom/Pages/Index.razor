@@ -161,7 +161,8 @@
     }
 
     private void Send() {
-        try {
+        SendString = "";
+        /*try {
             SerialPort.Write(SendString);
             Logs.Add("Sent: " + SendString);
             Snackbar.Add("Sent: " + SendString, Severity.Success);
@@ -171,7 +172,7 @@
         catch (Exception e) {
             Snackbar.Add(e.Message, Severity.Error);
             Errors.Add(e.Message);
-        }
+        }*/
     }
 
     private void HandleDataReceived(object sender, SerialDataReceivedEventArgs eventArgs) {
