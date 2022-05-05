@@ -59,14 +59,14 @@
             </MudTabPanel>
             <MudTabPanel Text="ERRORS">
                 <MudPaper>
-                    @foreach (var line in Errors.Split('\n')) {
+                    @foreach (var line in Errors) {
                         <MudText Typo="Typo.body1">@line</MudText>
                     }
                 </MudPaper>
             </MudTabPanel>
             <MudTabPanel Text="LOGS">
                 <MudPaper>
-                    @foreach (var line in Logs.Split('\n')) {
+                    @foreach (var line in Logs) {
                         <MudText Typo="Typo.body1">@line</MudText>
                     }
                 </MudPaper>
@@ -80,8 +80,8 @@
 
 @code {
 
-    public string Logs { get; set; } = "";
-    public string Errors { get; set; } = "";
+    public List<string> Logs { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
 
     public string OutPut { get; set; } = "";
 
@@ -108,10 +108,10 @@
         try {
             var data = (char) SerialPort.ReadChar();
             OutPut += data;
-            Logs += "Data Received!\n";
+            Logs.Add("Data Received!");
         }
         catch (Exception e) {
-            Errors += e.Message + "\n";
+            Errors.Add(e.Message);
         }
         Update();
     }
@@ -122,7 +122,7 @@
             OutPut += data;
         }
         catch (Exception e) {
-            Errors += e.Message + "\n";
+            Errors.Add(e.Message);
         }
         Update();
     }
