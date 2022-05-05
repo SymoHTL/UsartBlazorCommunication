@@ -1,9 +1,16 @@
 ﻿@page "/"
 @using System.IO.Ports
+@using System.Diagnostics
+@using System.Text.Json
+@using UsartBlazorCom.Entities
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 
-<MudContainer>
+<MudContainer Style="padding-top: 0">
+    <div class="pb-3">
+        <MudButton FullWidth="true" Color="Color.Success" Variant="Variant.Outlined" OnClick="async () => await SaveCfg()">Save</MudButton>
+    </div>
     <div class="d-flex justify-content-between">
         @if (SerialPort.IsOpen) {
             <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="Disconnect">Disconnect</MudButton>
@@ -51,7 +58,40 @@
         </div>
     </div>
     <div>
-        <MudTabs Centered="true" Rounded="true">
+        <MudExpansionPanel Text="Flashing" Class="my-3">
+            <form @onsubmit="StartSearch">
+                <MudTextField Label="Projects folder path (the folder where all your projects are located)"
+                              @bind-Value="ProjectFolder" Required="true" Immediate="true"></MudTextField>
+                <MudTextField Label="Current project name CASE-SENSITIVE! (must not be the full project name but distinguishable from your other projects)"
+                              @bind-Value="CurrentProjectName" Required="true" Immediate="true"></MudTextField>
+                <MudButton Class="mt-3" Color="Color.Success" Variant="Variant.Filled" ButtonType="ButtonType.Submit">Search</MudButton>
+            </form>
+            @if (Files.Count is not 0) {
+                <MudText Typo="Typo.h6">Found-Files:</MudText>
+            }
+            <div style="max-height: 30vh; overflow-y: auto">
+                <Virtualize Items="Files">
+                    <MudText Color="Color.Info">@context.FullName</MudText>
+                    <MudButton Color="Color.Success" Variant="Variant.Filled" Size="Size.Small" OnClick="() => SelectFile(context)">Select</MudButton>
+                </Virtualize>
+            </div>
+            @if (HexFile is not null) {
+                <div class="d-flex justify-content-center mt-3">
+                    <MudButton FullWidth="true" Style="height: 7.5rem" Variant="Variant.Filled" Color="Color.Warning" OnClick="ReFlash">FLASH</MudButton>
+                </div>
+            }
+        </MudExpansionPanel>
+    </div>
+    <div>
+        <form @onsubmit="Send" class="d-flex mb-3">
+            <MudTextField @bind-Value="SendString" Variant="Variant.Outlined" Clearable="true" Immediate="true"></MudTextField>
+            <div class="d-flex justify-content-end">
+                <MudButton Color="Color.Success" Variant="Variant.Filled" ButtonType="ButtonType.Submit">Send</MudButton>
+            </div>
+        </form>
+    </div>
+    <div>
+        <MudTabs Centered="true" Rounded="true" Class="mb-4">
             <MudTabPanel Text="OUTPUT">
                 <MudPaper>
                     <MudText Typo="Typo.body1">@OutPut</MudText>
@@ -78,20 +118,36 @@
 </MudContainer>
 
 
+<MudOverlay @bind-Visible="_searching" ZIndex="10000" AutoClose="false">
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true"></MudProgressCircular>
+</MudOverlay>
+
 @code {
+    private bool _searching;
 
-    public List<string> Logs { get; set; } = new();
-    public List<string> Errors { get; set; } = new();
+    private string SendString { get; set; } = null!;
 
-    public string OutPut { get; set; } = "";
+    private List<string> Logs { get; set; } = new();
+    private List<string> Errors { get; set; } = new();
 
-    public SerialPort SerialPort { get; set; } = new() {
+    private string OutPut { get; set; } = "";
+
+    private string CurrentProjectName { get; set; } = null!;
+    private string ProjectFolder { get; set; } = null!;
+    private FileInfo HexFile { get; set; } = null!;
+    private List<FileInfo> Files { get; set; } = new ();
+    
+    private SerialPort SerialPort { get; set; } = new() {
         PortName = SerialPort.GetPortNames().First(),
         BaudRate = 9600,
         Parity = Parity.None,
         DataBits = 8
     };
 
+    protected override async Task OnInitializedAsync() {
+        await Read();
+    }
+    
     private void Connect() {
         SerialPort.Open();
         SerialPort.DataReceived += HandleDataReceived;
@@ -102,6 +158,20 @@
         SerialPort.Close();
         SerialPort.DataReceived -= HandleDataReceived;
         SerialPort.ErrorReceived -= HandleErrorReceived;
+    }
+
+    private void Send() {
+        try {
+            SerialPort.Write(SendString);
+            Logs.Add("Sent: " + SendString);
+            Snackbar.Add("Sent: " + SendString, Severity.Success);
+            SendString = "";
+            Update();
+        }
+        catch (Exception e) {
+            Snackbar.Add(e.Message, Severity.Error);
+            Errors.Add(e.Message);
+        }
     }
 
     private void HandleDataReceived(object sender, SerialDataReceivedEventArgs eventArgs) {
@@ -119,17 +189,143 @@
     private void HandleErrorReceived(object sender, SerialErrorReceivedEventArgs eventArgs) {
         try {
             var data = SerialPort.ReadExisting();
-            OutPut += data;
+            Errors.Add(data);
         }
         catch (Exception e) {
             Errors.Add(e.Message);
         }
         Update();
     }
+    
+    private void ReFlash() {
+        Disconnect();
+        var thread = new Thread(AvrDudeThread);
+        thread.Start();
+    }
 
-    private async void Update() =>
-        await InvokeAsync(StateHasChanged);
+    private void AvrDudeThread() {
+        try {
+            var avrProcess = new Process(){
+                StartInfo = new ProcessStartInfo(){
+                    FileName = "avrdude.exe",
+                    Arguments = "-u -v -patmega328p -carduino -P" + SerialPort.PortName + " -b115200  -Uflash:w:" + HexFile.FullName + ":i",
+                    WindowStyle = ProcessWindowStyle.Normal,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true
+                }
+            };
+            avrProcess.Start();
+            avrProcess.WaitForExit();
+            var error = avrProcess.StandardError.ReadToEnd();
+            Errors.Add(error);
+            if (error.Contains("Thank you.")) {                
+                Logs.Add("Successfully flashed!");
+                Snackbar.Add("Successfully flashed!", Severity.Success);
+            }
+            else {
+                Logs.Add("Failed to flash!");
+                Snackbar.Add("Failed to flash!", Severity.Error);
+            }
+        }
+        catch (Exception e) {
+            Console.WriteLine(e);
+        }
+    }
 
+    private void SelectFile(FileInfo file) {
+        HexFile = file;
+        Snackbar.Add("Selected: " + HexFile.Name, Severity.Success);
+    }
+    
+    private void StartSearch() {
+        SetOverlay(true);
+        Files.Clear();
+        var searchThread = new Thread(InitSearchThread);
+        searchThread.Start();
+    }
+
+    private void InitSearchThread() {
+        Search(ProjectFolder);
+        SetOverlay(false);
+
+        if (Files.Count is not 0) return;
+        Errors.Add("No files found!");
+        Snackbar.Add("No files found!", Severity.Error);
+    }
+
+    private void Search(string path) {
+        try {
+            var directoryInfo = new DirectoryInfo(path);
+            if (!directoryInfo.Exists)
+                throw new DirectoryNotFoundException($"Source directory not found: {directoryInfo.FullName}");
+
+            foreach (var file in directoryInfo.GetFiles()) {
+                if (file.Extension is not ".hex") continue;
+                if (!file.Name.StartsWith(CurrentProjectName)) continue;
+                Files.Add(file);
+                Logs.Add("Found: " + file.FullName);
+            }
+
+            foreach (var subDir in directoryInfo.GetDirectories()) {
+                if (subDir.Attributes.HasFlag(FileAttributes.Hidden)) continue;
+                if (subDir.Attributes.HasFlag(FileAttributes.System)) continue;
+                if (subDir.Attributes.HasFlag(FileAttributes.Archive)) continue;
+                if (subDir.Attributes.HasFlag(FileAttributes.Temporary)) continue;
+                Search(subDir.FullName);
+            }
+        }
+        catch (Exception e) {
+            Errors.Add(e.Message);
+        }
+    }
+    
+    private void SetOverlay(bool change) {
+        _searching = change;
+        Update();
+    }
+    
+    private async Task SaveCfg() {
+        try {
+            var cfg = new Cfg {
+                ProjectFolder = ProjectFolder,
+                PortName = SerialPort.PortName,
+                BaudRate = SerialPort.BaudRate,
+                DataBits = SerialPort.DataBits,
+                Parity = SerialPort.Parity,
+                StopBits = SerialPort.StopBits,
+                Handshake = SerialPort.Handshake,
+                CurrentProjectName = CurrentProjectName
+            };
+            var jsonString = JsonSerializer.Serialize(cfg);
+            await File.WriteAllTextAsync(@$"{Directory.GetCurrentDirectory()}\projectConfig.json", jsonString);
+        }
+        catch (Exception e) {
+            Errors.Add(e.Message);
+        }
+    }
+
+    private async Task Read() {
+        try {
+            var jsonString = await File.ReadAllTextAsync(@$"{Directory.GetCurrentDirectory()}\projectConfig.json");
+            var cfg = JsonSerializer.Deserialize<Cfg>(jsonString);
+            if (cfg is not null) {
+                ProjectFolder = cfg.ProjectFolder;
+                SerialPort.PortName = cfg.PortName;
+                SerialPort.BaudRate = cfg.BaudRate;
+                SerialPort.DataBits = cfg.DataBits;
+                SerialPort.Parity = cfg.Parity;
+                SerialPort.StopBits = cfg.StopBits;
+                SerialPort.Handshake = cfg.Handshake;
+                CurrentProjectName = cfg.CurrentProjectName;
+            }
+        }
+        catch (Exception e) {
+            Errors.Add(e.Message);
+        }
+    }
+    
+    private async void Update() => await InvokeAsync(StateHasChanged);
+    
 
     public void Dispose() {
         SerialPort.Dispose();

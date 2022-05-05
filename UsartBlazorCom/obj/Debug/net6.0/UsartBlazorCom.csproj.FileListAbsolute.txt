@@ -40,3 +40,4 @@ D:\Tolle Projekte\UsartBlazorCom\UsartBlazorCom\obj\Debug\net6.0\refint\UsartBla
 D:\Tolle Projekte\UsartBlazorCom\UsartBlazorCom\obj\Debug\net6.0\UsartBlazorCom.pdb
 D:\Tolle Projekte\UsartBlazorCom\UsartBlazorCom\obj\Debug\net6.0\UsartBlazorCom.genruntimeconfig.cache
 D:\Tolle Projekte\UsartBlazorCom\UsartBlazorCom\obj\Debug\net6.0\ref\UsartBlazorCom.dll
+D:\Tolle Projekte\UsartBlazorCom\UsartBlazorCom\bin\Debug\net6.0\projectConfig.json
