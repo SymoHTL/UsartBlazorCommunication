@@ -161,18 +161,17 @@
     }
 
     private void Send() {
-        SendString = "";
-        /*try {
+        try {
             SerialPort.Write(SendString);
             Logs.Add("Sent: " + SendString);
             Snackbar.Add("Sent: " + SendString, Severity.Success);
-            SendString = "";
+            //SendString = "";
             Update();
         }
         catch (Exception e) {
             Snackbar.Add(e.Message, Severity.Error);
             Errors.Add(e.Message);
-        }*/
+        }
     }
 
     private void HandleDataReceived(object sender, SerialDataReceivedEventArgs eventArgs) {
