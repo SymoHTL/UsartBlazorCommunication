@@ -4,6 +4,7 @@
 @using System.Text.Json
 @using UsartBlazorCom.Entities
 @inject ISnackbar Snackbar
+@inject IJSRuntime JsRuntime
 @implements IDisposable
 
 
@@ -91,24 +92,27 @@
         </form>
     </div>
     <div>
-        <MudTabs Centered="true" Rounded="true" Class="mb-4">
+        <MudTabs @ref="_tabs" KeepPanelsAlive="true" Centered="true" Rounded="true" Class="mb-4">
             <MudTabPanel Text="OUTPUT">
-                <MudPaper>
+                <MudPaper Class="p-3">
+                    <MudButtonGroup OverrideStyles="false">
+                        <MudButton Color="Color.Warning" Variant="Variant.Filled" OnClick="ClearOutput">Clear</MudButton>
+                    </MudButtonGroup>
                     <MudText Typo="Typo.body1">@OutPut</MudText>
                 </MudPaper>
             </MudTabPanel>
             <MudTabPanel Text="ERRORS">
-                <MudPaper>
-                    @foreach (var line in Errors) {
-                        <MudText Typo="Typo.body1">@line</MudText>
-                    }
+                <MudPaper Class="p-3 overflow-auto" Style="height: 40vh">
+                <Virtualize Items="Errors">   
+                    <MudText Typo="Typo.body1">@context</MudText>
+                </Virtualize>
                 </MudPaper>
             </MudTabPanel>
             <MudTabPanel Text="LOGS">
-                <MudPaper>
-                    @foreach (var line in Logs) {
-                        <MudText Typo="Typo.body1">@line</MudText>
-                    }
+                <MudPaper Class="p-3 overflow-auto" Style="height: 40vh">
+                    <Virtualize Items="Logs">
+                        <MudText Typo="Typo.body1">@context</MudText>
+                    </Virtualize>
                 </MudPaper>
             </MudTabPanel>
         </MudTabs>
@@ -123,6 +127,9 @@
 </MudOverlay>
 
 @code {
+    private MudTabs _tabs = null!;
+    
+    
     private bool _searching;
 
     private string SendString { get; set; } = null!;
@@ -195,6 +202,12 @@
             Errors.Add(e.Message);
         }
         Update();
+    }
+
+    private void ClearOutput() {
+        OutPut = string.Empty;
+        Logs.Add("Output Cleared!");
+        Snackbar.Add("Output Cleared!", Severity.Success);
     }
     
     private void ReFlash() {
@@ -326,7 +339,6 @@
     
     private async void Update() => await InvokeAsync(StateHasChanged);
     
-
     public void Dispose() {
         SerialPort.Dispose();
         SerialPort.DataReceived -= HandleDataReceived;
